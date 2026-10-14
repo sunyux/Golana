@@ -216,6 +216,38 @@ int main(int argc, char **argv)
         turn(EN_PRESET, 1);
         check(trk[0].step[1].time == ST_NOTE && trk[0].p[P_SLEN] == 4, "loaded back: the steps and LENGTH");
     }
+    /* HOME · SPHERE: the notes played land as stars, joined in order; the same note twice in a row (UNISON) is one */
+    {
+        static const uint32_t K[6] = {0, 4, 7, 11, 14, 7};
+        uint32_t i;
+        press(B_HOME);
+        gu_view = 3;
+        ui.force = 1;
+        render(120);
+        shot("50_home_sphere_earlier");                /* (the keys played earlier in this script) */
+        check(gb.n > 0 && gb.n <= GB_N, "SPHERE: the notes played before, at most 12");
+        gb.n = 0;
+        for (i = 0; i < 6u; i++) {
+            web_keys(1u << K[i]);
+            render(160);
+            web_keys(0);
+            render(120);
+        }
+        render(60);
+        shot("51_home_sphere_phrase");
+        check(gb.n == 6, "SPHERE: six keys, six stars");
+        check(gb.note[1] == gb.note[0] + 4 && gb.note[5] == gb.note[2], "SPHERE: in the order played");
+        render(900);
+        shot("52_home_sphere_settled");
+        for (i = 0; i < 4u && !(GU_PAGES[gu.page].btn == B_GLO && GU_PAGES[gu.page].k[2].id == GV_VIEW); i++)
+            press(B_GLO);
+        render(60);
+        shot("53_glo_setup_sphere");
+        check(GU_PAGES[gu.page].k[2].id == GV_VIEW && gu_view == 3, "GLO · SETUP · HOME shows SPHERE");
+        gu_view = 2;
+        ui.force = 1;
+        render(80);
+    }
     /* (UPDATE MODE's countdown is main.c's loop: not in the browser build) */
     printf("%s: %d failures\n", fails ? "FAIL" : "ok", fails);
     return fails ? 1 : 0;

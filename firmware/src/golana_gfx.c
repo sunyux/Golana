@@ -4,7 +4,8 @@
  * the values themselves, redrawn as they change:
  *   HOME       the sound playing, from the scope buffer (fx.c scope_buf: what goes out), three ways (GLO SETUP HOME):
  *              RING the wave wrapped round a circle, ORBIT the wave against itself a moment later (a phase portrait:
- *              every timbre draws its own figure), RIDGE the last waves stacked, the newest in front
+ *              every timbre draws its own figure), RIDGE the last waves stacked, the newest in front, SPHERE the
+ *              notes played as stars on a pitch wheel, joined in the order played (from the Biosphere)
  *   OSC 1/2    a cycle and a half of the oscillator as its WAVE, CTRL 1, MOD and SEMITONE make it
  *   FILTER     the response, dB over a log frequency axis (30 Hz .. 16 kHz), the cutoff marked
  *   FILTER EG, AMP EG   the four stages, their lengths as the times, the sustain as its level
@@ -150,6 +151,120 @@ static void gu_home_ridge(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
             cv_line(x0, y[i], x1, y[i + 1], c);
             cv_line(x0, y[i] + 1, x1, y[i + 1] + 1, c);
         }
+    }
+}
+
+/* SPHERE (after the Biosphere, github.com/sunyux/biosphere37): the notes as they start (eng_golana.c gb_note_q) as
+ * stars on a pitch wheel, each pitch class its own spoke (C at the top, clockwise) and each octave further out; the
+ * last 12 joined in the order played, the newest a ringed planet with a shockwave; a little spiral galaxy turns in
+ * the middle and the sky twinkles. Rules first: the same note always lands on the same star. */
+#define GB_N 12u
+static struct {
+    uint8_t note[GB_N], n;        /* [0] the oldest */
+    uint32_t r, rot, tick;        /* gb_note_w read so far, the galaxy's turn, drawings */
+    uint16_t since;               /* drawings since the newest note */
+} gb;
+
+/* the 12 pitch classes round the palette's nine button colours */
+static uint16_t gb_col(uint32_t pc)
+{
+    uint32_t a = pc * 3u / 4u;
+    return ux_mix(GU_P->btn[a % 9u], GU_P->btn[(a + 1u) % 9u], (int32_t)((pc * 3u) % 4u) * 25);
+}
+/* a point on an ellipse of radii rx, ry round (cx, cy), at phase ph */
+static void gb_at(uint32_t ph, int32_t rx, int32_t ry, int32_t cx, int32_t cy, int32_t *x, int32_t *y)
+{
+    *x = cx + (rx * osc_sine(ph + 0x40000000u) >> 15);
+    *y = cy + (ry * osc_sine(ph) >> 15);
+}
+/* note's star: its pitch class the spoke, its octave the ring (C4 at 76 % of the outer one, C2 60 %, C7 100 %) */
+static void gb_star(uint32_t note, int32_t cx, int32_t cy, int32_t *x, int32_t *y)
+{
+    int32_t s = 76 + clamp((int32_t)note / 12 - 5, -2, 3) * 8;
+    gb_at((note % 12u) * 0x15555555u - 0x40000000u, 98 * s / 100, 31 * s / 100, cx, cy, x, y);
+}
+
+static void gu_home_sphere(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
+{
+    static const uint8_t DISC[9] = {2, 3, 4, 4, 4, 4, 4, 3, 2};   /* the planet's half-widths, row by row */
+    int32_t cx = w / 2, cy = h / 2, i, x0, y0, x1, y1;
+    uint32_t wr = gb_note_w, k;
+    if (wr - gb.r > 16u)                               /* (a burst longer than the ring: its last 16) */
+        gb.r = wr - 16u;
+    while (gb.r != wr) {
+        uint8_t nt = gb_note_q[gb.r++ & 15u];
+        if (gb.n && gb.since == 0u && gb.note[gb.n - 1u] == nt)
+            continue;                                  /* (UNISON: one note starts several voices at once) */
+        if (gb.n == GB_N) {
+            for (k = 0; k + 1u < GB_N; k++)
+                gb.note[k] = gb.note[k + 1u];
+            gb.n--;
+        }
+        gb.note[gb.n++] = nt;
+        gb.since = 0;
+    }
+    if (gb.since < 999u)
+        gb.since++;
+    gb.tick++;
+    gb.rot += 0x00A00000u;
+
+    for (i = 0; i < 56; i++) {                         /* the sky: fixed stars, each twinkling at its own pace */
+        uint32_t hs = (uint32_t)i * 2654435761u, tw = ((hs >> 4) + gb.tick * (1u + (hs & 3u))) & 63u;
+        int32_t b = tw < 32u ? (int32_t)tw : 63 - (int32_t)tw;
+        cv_pset(8 + (int32_t)((hs >> 8) % (uint32_t)(w - 16)), 4 + (int32_t)((hs >> 20) % (uint32_t)(h - 8)),
+                ux_mix(surf, GC_TEXT, 14 + b * 2));
+    }
+    for (i = 0; i < 84; i++) {                         /* the galaxy: three arms winding out, turning */
+        int32_t j = i / 3, r = 2 + j;
+        gb_at(gb.rot + (uint32_t)j * 0x0A000000u + (uint32_t)(i % 3) * 0x55555555u, r + (r >> 2), r * 40 / 100, cx, cy,
+              &x0, &y0);
+        cv_pset(x0, y0, ux_mix(surf, ux_mix(GC_TEXT, GC_AMBER, 40), 90 - j * 2));
+    }
+    cv_rect(cx - 1, cy - 1, 3, 2, GC_TEXT);
+    for (k = 0; k < 12u; k++) {                        /* the wheel: a tick per pitch class, in its colour */
+        gb_at(k * 0x15555555u - 0x40000000u, 101, 33, cx, cy, &x0, &y0);
+        cv_rect(x0 - 1, y0, 3, 1, ux_mix(surf, gb_col(k), 45));
+    }
+    for (i = 1; i < (int32_t)gb.n; i++) {              /* the route, older fainter, the newest leg thicker */
+        gb_star(gb.note[i - 1], cx, cy, &x0, &y0);
+        gb_star(gb.note[i], cx, cy, &x1, &y1);
+        cv_line_t(x0, y0, x1, y1, ux_mix(surf, gb_col(gb.note[i] % 12u), 25 + 75 * i / ((int32_t)gb.n - 1)),
+                  i == (int32_t)gb.n - 1 ? 2 : 1);
+    }
+    for (i = 0; i < (int32_t)gb.n; i++) {              /* the stars */
+        gb_star(gb.note[i], cx, cy, &x0, &y0);
+        cv_rect(x0 - 1, y0 - 1, 3, 3, ux_mix(surf, gb_col(gb.note[i] % 12u), 40 + 60 * (i + 1) / (int32_t)gb.n));
+    }
+    if (!gb.n) {
+        cv_text(10, 4, &AF_S, "PLAY A KEY", ux_mix(surf, GC_TEXT, 45));
+        return;
+    }
+    {
+        uint32_t nt = gb.note[gb.n - 1u];
+        uint16_t c = gb_col(nt % 12u);
+        static const char *const NN[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+        char name[8];
+        gb_star(nt, cx, cy, &x0, &y0);
+        if (gb.since < 24u)                            /* the shockwave of a new note */
+            for (k = 0; k < 48u; k++) {
+                gb_at(k * 0x05555555u, 6 + (int32_t)gb.since * 2, 3 + (int32_t)gb.since, x0, y0, &x1, &y1);
+                cv_pset(x1, y1, ux_mix(surf, c, 80 - (int32_t)gb.since * 3));
+            }
+        for (k = 0; k < 48u; k++) {                    /* the ring's back half, behind the planet */
+            gb_at(k * 0x05555555u, 9, 3, x0, y0, &x1, &y1);
+            if (y1 < y0)
+                cv_pset(x1, y1, ux_mix(c, GC_TEXT, 45));
+        }
+        for (i = 0; i < 9; i++)                        /* the planet */
+            cv_rect(x0 - DISC[i], y0 - 4 + i, 2 * DISC[i] + 1, 1, i < 3 ? ux_mix(c, GC_TEXT, 30) : c);
+        for (k = 0; k < 48u; k++) {                    /* the ring's front half */
+            gb_at(k * 0x05555555u, 9, 3, x0, y0, &x1, &y1);
+            if (y1 >= y0)
+                cv_pset(x1, y1, ux_mix(c, GC_TEXT, 45));
+        }
+        str_cpy(name, NN[nt % 12u], 4);                /* the newest note, named (C4 = 60) */
+        fmt_int(name + str_len(name), (int32_t)nt / 12 - 1);
+        cv_text(10, 4, &AF_S, name, c);
     }
 }
 
@@ -322,6 +437,8 @@ static void gu_draw_graph(uint32_t g)
             gu_home_orbit(w, h, acc, surf);
         else if (gu_view == 2u)
             gu_home_ridge(w, h, acc, surf);
+        else if (gu_view == 3u)
+            gu_home_sphere(w, h, acc, surf);
         else
             gu_home_ring(w, h, acc, surf);
         break;

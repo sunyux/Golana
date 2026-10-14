@@ -27,7 +27,7 @@ typedef struct {
     uint16_t btn[9];
 } gu_pal_t;
 static const char *const N_GPAL[] = {"NIGHT", "CRT", "PAPER", "NEON"};
-static const char *const N_GVIEW[] = {"RING", "ORBIT", "RIDGE"};
+static const char *const N_GVIEW[] = {"RING", "ORBIT", "RIDGE", "SPHERE"};
 static const gu_pal_t GU_PALS[4] = {
     {RGB(14, 17, 24), RGB(26, 30, 40), RGB(38, 44, 58), RGB(48, 54, 70), RGB(232, 230, 225), RGB(150, 156, 172),
      RGB(88, 94, 110), RGB(14, 17, 24), 0,
@@ -205,12 +205,12 @@ static int gu_store(uint32_t k, const char *name)
 static void gu_prefs_load(void)
 {
     gu_pi = (uint8_t)((settings_hold + 3u) & 3u);       /* (HOLD's default, 1: NIGHT) */
-    gu_view = (uint8_t)((settings_leds < 3u ? settings_leds + 2u : 2u) % 3u);   /* (LEDS's default, 0: RIDGE) */
+    gu_view = (uint8_t)(settings_leds < 3u ? (settings_leds + 2u) % 3u : 3u);   /* (LEDS's default, 0: RIDGE; 3: SPHERE) */
 }
 static void gu_prefs_save(void)
 {
     settings_hold = (uint8_t)((gu_pi + 1u) & 3u);
-    settings_leds = (uint8_t)((gu_view + 1u) % 3u);
+    settings_leds = (uint8_t)(gu_view < 3u ? (gu_view + 1u) % 3u : 3u);
     settings_save();                                     /* (written when the sequencer is stopped: settings_poll) */
 }
 
@@ -239,7 +239,7 @@ static void gu_range(const gu_par_t *q, int32_t *lo, int32_t *hi)
     case GV_STEPON: *lo = 0; *hi = 1; return;
     case GV_MIDI: *lo = 0; *hi = 1; return;
     case GV_PAL: *lo = 0; *hi = 3; return;
-    case GV_VIEW: *lo = 0; *hi = 2; return;
+    case GV_VIEW: *lo = 0; *hi = 3; return;
     case GV_SSTEP: *lo = 1; *hi = gu_slen(); return;
     case GV_SNOTE: *lo = 0; *hi = 127; return;
     case GV_STYPE: *lo = 0; *hi = 2; return;
@@ -365,7 +365,7 @@ static void gu_text(const gu_par_t *q, char *b)
         return;
     }
     if (q->id == GV_PAL || q->id == GV_VIEW) {
-        str_cpy(b, q->id == GV_PAL ? N_GPAL[v & 3] : N_GVIEW[v % 3], 8);
+        str_cpy(b, q->id == GV_PAL ? N_GPAL[v & 3] : N_GVIEW[v & 3], 8);
         return;
     }
     if (q->id == GV_SNOTE) {                           /* a note name (C4 = 60), "--" on a rest or a tie */

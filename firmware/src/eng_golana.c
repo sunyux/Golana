@@ -169,8 +169,15 @@ static void gol_block(track_t *t)
         g->seed = 0x5EED1234;
 }
 
+/* the notes as they start, for HOME's SPHERE drawing (golana_gfx.c): written here, in the audio ISR, read by the
+ * interface; a ring of 16, the index only ever counting up (one writer, one reader) */
+static uint8_t gb_note_q[16];
+static volatile uint32_t gb_note_w;
+
 static void gol_note_on(track_t *t, voice_t *v)
 {
+    gb_note_q[gb_note_w & 15u] = v->note;
+    gb_note_w++;
     glp_t *g = gl_part(t);
     glv_t *s = &g->v[(uint32_t)(v - t->v) % NVOICE];
     uint32_t i, others = 0, fresh = v->env == 0 && v->env_out == 0;
