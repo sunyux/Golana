@@ -43,8 +43,10 @@ S&H TEXTURE), 17-32 start as INIT. MIDI Program Change 0-31 picks a program.
 
 The pages that set a shape draw it above their four knobs, from the values themselves: OSC 1 and OSC 2 their wave,
 FILTER its response curve, FILTER EG and AMP EG the envelope, LFO 1 and LFO 2 the running wave. HOME draws the sound
-playing, three ways (GLO · SETUP · HOME): RIDGE, the default (the last waves stacked), RING (the wave round a circle) and ORBIT (the wave against itself a moment
-later). GLO · SETUP · PALETTE: NIGHT, CRT, PAPER, NEON (kept with the settings).
+playing, four ways (GLO · SETUP · HOME): RIDGE, the default (the last waves stacked), RING (the wave round a circle), ORBIT (the wave against itself a moment
+later) and SPHERE (after the [Biosphere](https://github.com/sunyux/biosphere37): the notes played as stars on a pitch wheel, each pitch
+class its own spoke and each octave further out, the last 12 joined in the order played, the newest a ringed planet, over a turning
+spiral galaxy). GLO · SETUP · PALETTE: NIGHT, CRT, PAPER, NEON (kept with the settings).
 
 The screen shows the open page as a tab, "BUTTON · PAGE" in that button's own colour, with the button's other pages as dark tabs beside it.
 The header shows the program, its name and the battery (a bolt on USB power); a thin strip at the bottom shows the arpeggiator (a light, ARP, LATCH) on the left and the tempo (BPM, EXT on an external clock) on the right.
