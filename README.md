@@ -46,7 +46,7 @@ FILTER its response curve, FILTER EG and AMP EG the envelope, LFO 1 and LFO 2 th
 playing, four ways (GLO · SETUP · HOME): RIDGE, the default (the last waves stacked), RING (the wave round a circle), ORBIT (the wave against itself a moment
 later) and SPHERE (after the [Biosphere](https://github.com/sunyux/biosphere37): the notes played as stars on a pitch wheel, each pitch
 class its own spoke and each octave further out, the last 12 joined in the order played, the newest a ringed planet, over a turning
-spiral galaxy). GLO · SETUP · PALETTE: NIGHT, CRT, PAPER, NEON (kept with the settings).
+spiral galaxy; while it sounds, a static of coloured sparks thickens with the level, the galaxy turns faster and the playing wave rings the planet). GLO · SETUP · PALETTE: NIGHT, CRT, PAPER, NEON (kept with the settings).
 
 The screen shows the open page as a tab, "BUTTON · PAGE" in that button's own colour, with the button's other pages as dark tabs beside it.
 The header shows the program, its name and the battery (a bolt on USB power); a thin strip at the bottom shows the arpeggiator (a light, ARP, LATCH) on the left and the tempo (BPM, EXT on an external clock) on the right.

@@ -157,7 +157,9 @@ static void gu_home_ridge(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
 /* SPHERE (after the Biosphere, github.com/sunyux/biosphere37): the notes as they start (eng_golana.c gb_note_q) as
  * stars on a pitch wheel, each pitch class its own spoke (C at the top, clockwise) and each octave further out; the
  * last 12 joined in the order played, the newest a ringed planet with a shockwave; a little spiral galaxy turns in
- * the middle and the sky twinkles. Rules first: the same note always lands on the same star. */
+ * the middle and the sky twinkles. Rules first: the same note always lands on the same star. And the sound itself
+ * (the scope, as RING draws it): a static of coloured sparks that thickens with the level, the galaxy turning faster,
+ * the stars shimmering, and the playing wave wrapped round the planet as a halo. */
 #define GB_N 12u
 static struct {
     uint8_t note[GB_N], n;        /* [0] the oldest */
@@ -187,8 +189,9 @@ static void gb_star(uint32_t note, int32_t cx, int32_t cy, int32_t *x, int32_t *
 static void gu_home_sphere(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
 {
     static const uint8_t DISC[9] = {2, 3, 4, 4, 4, 4, 4, 3, 2};   /* the planet's half-widths, row by row */
-    int32_t cx = w / 2, cy = h / 2, i, x0, y0, x1, y1;
-    uint32_t wr = gb_note_w, k;
+    int16_t wave[64];
+    int32_t cx = w / 2, cy = h / 2, i, x0, y0, x1, y1, g, loud, jit;
+    uint32_t wr = gb_note_w, k, rnd;
     if (wr - gb.r > 16u)                               /* (a burst longer than the ring: its last 16) */
         gb.r = wr - 16u;
     while (gb.r != wr) {
@@ -206,7 +209,24 @@ static void gu_home_sphere(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
     if (gb.since < 999u)
         gb.since++;
     gb.tick++;
-    gb.rot += 0x00A00000u;
+    {                                                  /* the level: 0 (silence) .. 255 (full scale) */
+        int32_t pk = gu_scope_take(wave, 64);
+        g = gu_scope_gain(pk);
+        loud = clamp(pk >> 6, 0, 255);
+    }
+    gb.rot += 0x00A00000u + (uint32_t)loud * 0x00030000u;
+    jit = loud > 96 ? 1 : 0;                           /* loud: the stars shimmer a pixel */
+    rnd = gb.tick * 2654435761u;
+
+    for (i = 0; i < 24 + loud * 3; i++) {              /* the static: sparks in the notes' colours, more as it is louder */
+        int32_t sx, sy;
+        rnd = rnd * 1664525u + 1013904223u;
+        sx = 6 + (int32_t)((rnd >> 8) % (uint32_t)(w - 12));
+        sy = 4 + (int32_t)((rnd >> 20) % (uint32_t)(h - 8));
+        cv_pset(sx, sy, ux_mix(surf, gb_col((rnd >> 4) % 12u), 25 + (int32_t)((rnd >> 27) * 8u)));
+        if ((rnd & 15u) == 0u && loud > 48)            /* (now and then a brighter cross) */
+            cv_rect(sx - 1, sy, 3, 1, ux_mix(surf, GC_TEXT, 60)), cv_rect(sx, sy - 1, 1, 3, ux_mix(surf, GC_TEXT, 60));
+    }
 
     for (i = 0; i < 56; i++) {                         /* the sky: fixed stars, each twinkling at its own pace */
         uint32_t hs = (uint32_t)i * 2654435761u, tw = ((hs >> 4) + gb.tick * (1u + (hs & 3u))) & 63u;
@@ -228,6 +248,10 @@ static void gu_home_sphere(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
     for (i = 1; i < (int32_t)gb.n; i++) {              /* the route, older fainter, the newest leg thicker */
         gb_star(gb.note[i - 1], cx, cy, &x0, &y0);
         gb_star(gb.note[i], cx, cy, &x1, &y1);
+        if (jit) {
+            y0 += (int32_t)((rnd >> (i & 15)) & 1u) - (int32_t)((rnd >> (i + 3 & 15)) & 1u);
+            y1 += (int32_t)((rnd >> (i + 1 & 15)) & 1u) - (int32_t)((rnd >> (i + 4 & 15)) & 1u);
+        }
         cv_line_t(x0, y0, x1, y1, ux_mix(surf, gb_col(gb.note[i] % 12u), 25 + 75 * i / ((int32_t)gb.n - 1)),
                   i == (int32_t)gb.n - 1 ? 2 : 1);
     }
@@ -250,6 +274,17 @@ static void gu_home_sphere(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
                 gb_at(k * 0x05555555u, 6 + (int32_t)gb.since * 2, 3 + (int32_t)gb.since, x0, y0, &x1, &y1);
                 cv_pset(x1, y1, ux_mix(surf, c, 80 - (int32_t)gb.since * 3));
             }
+        if (loud > 8) {                                /* the halo: the playing wave wrapped round the planet */
+            int16_t hx[65], hy[65];
+            for (k = 0; k <= 64u; k++) {
+                int32_t v = clamp((wave[k & 63u] * g) >> 8, -32767, 32767), r = 13 + (v * 6 >> 15);
+                gb_at(k << 26, r, r / 2, x0, y0, &x1, &y1);
+                hx[k] = (int16_t)x1;
+                hy[k] = (int16_t)y1;
+            }
+            for (k = 1; k <= 64u; k++)
+                cv_line(hx[k - 1], hy[k - 1], hx[k], hy[k], ux_mix(surf, c, 45 + loud / 3));
+        }
         for (k = 0; k < 48u; k++) {                    /* the ring's back half, behind the planet */
             gb_at(k * 0x05555555u, 9, 3, x0, y0, &x1, &y1);
             if (y1 < y0)

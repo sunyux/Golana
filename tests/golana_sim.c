@@ -233,10 +233,14 @@ int main(int argc, char **argv)
             web_keys(0);
             render(120);
         }
+        web_keys(1u << K[3]);                          /* a key held: the sound playing, the static and the halo */
+        render(220);
+        shot("51_home_sphere_playing");
+        web_keys(0);
         render(60);
         shot("51_home_sphere_phrase");
-        check(gb.n == 6, "SPHERE: six keys, six stars");
-        check(gb.note[1] == gb.note[0] + 4 && gb.note[5] == gb.note[2], "SPHERE: in the order played");
+        check(gb.n == 7, "SPHERE: seven keys, seven stars");
+        check(gb.note[1] == gb.note[0] + 4 && gb.note[5] == gb.note[2] && gb.note[6] == gb.note[3], "SPHERE: in the order played");
         render(900);
         shot("52_home_sphere_settled");
         for (i = 0; i < 4u && !(GU_PAGES[gu.page].btn == B_GLO && GU_PAGES[gu.page].k[2].id == GV_VIEW); i++)
