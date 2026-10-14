@@ -233,9 +233,13 @@ int main(int argc, char **argv)
             web_keys(0);
             render(120);
         }
-        web_keys(1u << K[3]);                          /* a key held: the sound playing, the static and the halo */
+        web_keys(1u << K[3]);                          /* a key held: the sound playing, the beam, the sparks */
         render(220);
         shot("51_home_sphere_playing");
+        render(450);
+        shot("51_home_sphere_wander_b");
+        render(450);
+        shot("51_home_sphere_wander_c");
         web_keys(0);
         render(60);
         shot("51_home_sphere_phrase");

@@ -159,12 +159,22 @@ static void gu_home_ridge(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
  * last 12 joined in the order played, the newest a ringed planet with a shockwave; a little spiral galaxy turns in
  * the middle and the sky twinkles. Rules first: the same note always lands on the same star. And the sound itself
  * (the scope, as RING draws it): a static of coloured sparks that thickens with the level, the galaxy turning faster,
- * the stars shimmering, and the playing wave wrapped round the planet as a halo. */
+ * the stars riding the wave. And a wanderer, the ringed planet, travels from star to star, a leg at a time (to the
+ * newest note when one is played), drawing the wave along its way like an oscilloscope's beam, the last legs fading
+ * behind as an afterglow; the wave's peaks throw sparks off the beam that slow down and linger as little stars, and
+ * round the wanderer the wave is drawn against itself a moment later (XY, as ORBIT). */
 #define GB_N 12u
+#define GB_TRAIL 4u                /* the beams of the last legs, fading: the scope's afterglow */
+#define GB_P 48u                   /* the sparks the wave throws off */
 static struct {
     uint8_t note[GB_N], n;        /* [0] the oldest */
     uint32_t r, rot, tick;        /* gb_note_w read so far, the galaxy's turn, drawings */
     uint16_t since;               /* drawings since the newest note */
+    int16_t fx, fy, px, py;       /* the wanderer: from (fx, fy), now at (px, py) */
+    uint8_t to, tt;               /* ... towards star `to`, tt of 64 along the way */
+    int16_t bx[GB_TRAIL][33], by[GB_TRAIL][33];   /* the finished beams, [0] the newest */
+    uint8_t nb, pw;
+    struct { int16_t x, y, vx, vy; uint8_t life, pc; } p[GB_P];   /* sparks: Q4 position and speed */
 } gb;
 
 /* the 12 pitch classes round the palette's nine button colours */
@@ -189,8 +199,8 @@ static void gb_star(uint32_t note, int32_t cx, int32_t cy, int32_t *x, int32_t *
 static void gu_home_sphere(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
 {
     static const uint8_t DISC[9] = {2, 3, 4, 4, 4, 4, 4, 3, 2};   /* the planet's half-widths, row by row */
-    int16_t wave[64];
-    int32_t cx = w / 2, cy = h / 2, i, x0, y0, x1, y1, g, loud, jit;
+    int16_t wave[72], sx[GB_N], sy[GB_N], cbx[33], cby[33];
+    int32_t cx = w / 2, cy = h / 2, i, x0, y0, x1, y1, g, loud, amp;
     uint32_t wr = gb_note_w, k, rnd;
     if (wr - gb.r > 16u)                               /* (a burst longer than the ring: its last 16) */
         gb.r = wr - 16u;
@@ -202,32 +212,45 @@ static void gu_home_sphere(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
             for (k = 0; k + 1u < GB_N; k++)
                 gb.note[k] = gb.note[k + 1u];
             gb.n--;
+            if (gb.to)
+                gb.to--;
         }
         gb.note[gb.n++] = nt;
         gb.since = 0;
+        if (gb.n == 1u) {                              /* the first note: the wanderer appears on its star */
+            gb_star(nt, cx, cy, &x0, &y0);
+            gb.px = gb.fx = (int16_t)x0;
+            gb.py = gb.fy = (int16_t)y0;
+        } else {                                       /* a new note: off to it, from wherever it is */
+            gb.fx = gb.px;
+            gb.fy = gb.py;
+        }
+        gb.to = (uint8_t)(gb.n - 1u);
+        gb.tt = 0;
     }
     if (gb.since < 999u)
         gb.since++;
     gb.tick++;
     {                                                  /* the level: 0 (silence) .. 255 (full scale) */
-        int32_t pk = gu_scope_take(wave, 64);
+        int32_t pk = gu_scope_take(wave, 72);
         g = gu_scope_gain(pk);
         loud = clamp(pk >> 6, 0, 255);
     }
+    for (i = 0; i < 72; i++)                           /* the wave, scaled to full height */
+        wave[i] = (int16_t)clamp((wave[i] * g) >> 8, -32767, 32767);
     gb.rot += 0x00A00000u + (uint32_t)loud * 0x00030000u;
-    jit = loud > 96 ? 1 : 0;                           /* loud: the stars shimmer a pixel */
     rnd = gb.tick * 2654435761u;
+    amp = loud > 4 ? 10 + loud / 4 : 0;                /* how far the wave throws things: up to ~73 px */
 
     for (i = 0; i < 24 + loud * 3; i++) {              /* the static: sparks in the notes' colours, more as it is louder */
-        int32_t sx, sy;
+        int32_t qx, qy;
         rnd = rnd * 1664525u + 1013904223u;
-        sx = 6 + (int32_t)((rnd >> 8) % (uint32_t)(w - 12));
-        sy = 4 + (int32_t)((rnd >> 20) % (uint32_t)(h - 8));
-        cv_pset(sx, sy, ux_mix(surf, gb_col((rnd >> 4) % 12u), 25 + (int32_t)((rnd >> 27) * 8u)));
+        qx = 6 + (int32_t)((rnd >> 8) % (uint32_t)(w - 12));
+        qy = 4 + (int32_t)((rnd >> 20) % (uint32_t)(h - 8));
+        cv_pset(qx, qy, ux_mix(surf, gb_col((rnd >> 4) % 12u), 25 + (int32_t)((rnd >> 27) * 8u)));
         if ((rnd & 15u) == 0u && loud > 48)            /* (now and then a brighter cross) */
-            cv_rect(sx - 1, sy, 3, 1, ux_mix(surf, GC_TEXT, 60)), cv_rect(sx, sy - 1, 1, 3, ux_mix(surf, GC_TEXT, 60));
+            cv_rect(qx - 1, qy, 3, 1, ux_mix(surf, GC_TEXT, 60)), cv_rect(qx, qy - 1, 1, 3, ux_mix(surf, GC_TEXT, 60));
     }
-
     for (i = 0; i < 56; i++) {                         /* the sky: fixed stars, each twinkling at its own pace */
         uint32_t hs = (uint32_t)i * 2654435761u, tw = ((hs >> 4) + gb.tick * (1u + (hs & 3u))) & 63u;
         int32_t b = tw < 32u ? (int32_t)tw : 63 - (int32_t)tw;
@@ -245,45 +268,108 @@ static void gu_home_sphere(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
         gb_at(k * 0x15555555u - 0x40000000u, 101, 33, cx, cy, &x0, &y0);
         cv_rect(x0 - 1, y0, 3, 1, ux_mix(surf, gb_col(k), 45));
     }
-    for (i = 1; i < (int32_t)gb.n; i++) {              /* the route, older fainter, the newest leg thicker */
-        gb_star(gb.note[i - 1], cx, cy, &x0, &y0);
-        gb_star(gb.note[i], cx, cy, &x1, &y1);
-        if (jit) {
-            y0 += (int32_t)((rnd >> (i & 15)) & 1u) - (int32_t)((rnd >> (i + 3 & 15)) & 1u);
-            y1 += (int32_t)((rnd >> (i + 1 & 15)) & 1u) - (int32_t)((rnd >> (i + 4 & 15)) & 1u);
-        }
-        cv_line_t(x0, y0, x1, y1, ux_mix(surf, gb_col(gb.note[i] % 12u), 25 + 75 * i / ((int32_t)gb.n - 1)),
-                  i == (int32_t)gb.n - 1 ? 2 : 1);
-    }
-    for (i = 0; i < (int32_t)gb.n; i++) {              /* the stars */
-        gb_star(gb.note[i], cx, cy, &x0, &y0);
-        cv_rect(x0 - 1, y0 - 1, 3, 3, ux_mix(surf, gb_col(gb.note[i] % 12u), 40 + 60 * (i + 1) / (int32_t)gb.n));
-    }
     if (!gb.n) {
         cv_text(10, 4, &AF_S, "PLAY A KEY", ux_mix(surf, GC_TEXT, 45));
         return;
     }
+
+    for (i = 0; i < (int32_t)gb.n; i++) {              /* the stars ride the wave: each its own moment of it */
+        gb_star(gb.note[i], cx, cy, &x0, &y0);
+        sx[i] = (int16_t)(x0 + (wave[(i * 11) % 72] * amp / 2 >> 15));
+        sy[i] = (int16_t)(y0 + (wave[(i * 11 + 9) % 72] * amp / 3 >> 15));
+    }
+
+    /* the wanderer: from star to star, a leg at a time, faster when loud; then on to another one */
+    gb.tt = (uint8_t)clamp((int32_t)gb.tt + 2 + loud / 24, 0, 64);
+    {
+        int32_t t = gb.tt, e = t * t * (192 - 2 * t) / 4096;   /* ease in and out, 0..64 */
+        gb.px = (int16_t)(gb.fx + (sx[gb.to] - gb.fx) * e / 64);
+        gb.py = (int16_t)(gb.fy + (sy[gb.to] - gb.fy) * e / 64);
+    }
+    {   /* the beam: the wave drawn along the way so far, across it, as an oscilloscope's trace */
+        int32_t dx = gb.px - gb.fx, dy = gb.py - gb.fy, ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+        int32_t len = (ax > ay ? ax + ay / 2 : ay + ax / 2) + 1, nx = -dy * 256 / len, ny = dx * 256 / len;
+        if (len < 3) { nx = 0; ny = 256; }
+        for (k = 0; k <= 32u; k++) {
+            int32_t d = wave[k * 2u] * amp >> 15;
+            cbx[k] = (int16_t)(gb.fx + dx * (int32_t)k / 32 + (nx * d >> 8));
+            cby[k] = (int16_t)(gb.fy + dy * (int32_t)k / 32 + (ny * d >> 9));
+            if ((k & 1u) && loud > 16 && (d > amp / 3 || d < -amp / 3) && ((rnd >> (k & 31u)) & 1u)) {
+                uint32_t q = gb.pw++ % GB_P;          /* a peak throws a spark off the beam */
+                int32_t sp = 16 + (d < 0 ? -d : d);   /* (Q4: px/16 per drawing) */
+                gb.p[q].x = (int16_t)(cbx[k] << 4);
+                gb.p[q].y = (int16_t)(cby[k] << 4);
+                gb.p[q].vx = (int16_t)((d < 0 ? -nx : nx) * sp >> 8);
+                gb.p[q].vy = (int16_t)((d < 0 ? -ny : ny) * sp >> 9);
+                gb.p[q].life = (uint8_t)(48 + (rnd >> 24) % 48u);
+                gb.p[q].pc = (uint8_t)(gb.note[gb.to] % 12u);
+            }
+        }
+    }
+    if (gb.tt >= 64u) {                                /* arrived: the beam stays a while, the next star is picked */
+        for (k = GB_TRAIL - 1u; k > 0u; k--) {
+            memcpy(gb.bx[k], gb.bx[k - 1u], sizeof gb.bx[0]);
+            memcpy(gb.by[k], gb.by[k - 1u], sizeof gb.by[0]);
+        }
+        memcpy(gb.bx[0], cbx, sizeof cbx);
+        memcpy(gb.by[0], cby, sizeof cby);
+        if (gb.nb < GB_TRAIL)
+            gb.nb++;
+        gb.fx = gb.px;
+        gb.fy = gb.py;
+        gb.tt = 0;
+        if (gb.n > 1u)
+            gb.to = (uint8_t)((gb.to + 1u + (rnd >> 16) % (gb.n - 1u)) % gb.n);
+    }
+
+    for (k = gb.nb; k-- > 0u;)                          /* the afterglow: the last legs' beams, fading */
+        for (i = 1; i <= 32; i++)
+            cv_line(gb.bx[k][i - 1], gb.by[k][i - 1], gb.bx[k][i], gb.by[k][i], ux_mix(surf, acc, 40 - (int32_t)k * 9));
+    for (i = 1; i < (int32_t)gb.n; i++)                /* the route, faint now: the order played */
+        cv_line(sx[i - 1], sy[i - 1], sx[i], sy[i], ux_mix(surf, gb_col(gb.note[i] % 12u), 18 + 40 * i / ((int32_t)gb.n - 1)));
+    for (i = 0; i < (int32_t)gb.n; i++)                /* the stars */
+        cv_rect(sx[i] - 1, sy[i] - 1, 3, 3, ux_mix(surf, gb_col(gb.note[i] % 12u), 50 + 50 * (i + 1) / (int32_t)gb.n));
+    for (k = 0; k < GB_P; k++) {                       /* the sparks: fly out, slow down, linger as little stars */
+        if (!gb.p[k].life)
+            continue;
+        gb.p[k].x += gb.p[k].vx;
+        gb.p[k].y += gb.p[k].vy;
+        gb.p[k].vx = (int16_t)(gb.p[k].vx * 7 / 8);
+        gb.p[k].vy = (int16_t)(gb.p[k].vy * 7 / 8);
+        gb.p[k].life--;
+        x0 = gb.p[k].x >> 4;
+        y0 = gb.p[k].y >> 4;
+        if (gb.p[k].life > 70u)
+            cv_rect(x0, y0, 2, 2, ux_mix(gb_col(gb.p[k].pc), GC_TEXT, 40));
+        else
+            cv_pset(x0, y0, ux_mix(surf, gb_col(gb.p[k].pc), 20 + gb.p[k].life));
+    }
+    {
+        uint16_t c = gb_col(gb.note[gb.to] % 12u);
+        for (i = 1; i <= 32; i++) {                    /* the beam being drawn, bright */
+            cv_line(cbx[i - 1], cby[i - 1], cbx[i], cby[i], ux_mix(c, GC_TEXT, 45));
+            cv_line(cbx[i - 1] + 1, cby[i - 1], cbx[i] + 1, cby[i], ux_mix(c, GC_TEXT, 20));
+            cv_line(cbx[i - 1], cby[i - 1] + 1, cbx[i], cby[i] + 1, ux_mix(surf, c, 70));
+        }
+    }
     {
         uint32_t nt = gb.note[gb.n - 1u];
-        uint16_t c = gb_col(nt % 12u);
+        uint16_t c = gb_col(gb.note[gb.to] % 12u);
         static const char *const NN[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
         char name[8];
-        gb_star(nt, cx, cy, &x0, &y0);
-        if (gb.since < 24u)                            /* the shockwave of a new note */
+        if (gb.since < 24u)                            /* the shockwave of a new note, on its star */
             for (k = 0; k < 48u; k++) {
-                gb_at(k * 0x05555555u, 6 + (int32_t)gb.since * 2, 3 + (int32_t)gb.since, x0, y0, &x1, &y1);
-                cv_pset(x1, y1, ux_mix(surf, c, 80 - (int32_t)gb.since * 3));
+                gb_at(k * 0x05555555u, 6 + (int32_t)gb.since * 2, 3 + (int32_t)gb.since, sx[gb.n - 1u], sy[gb.n - 1u],
+                      &x1, &y1);
+                cv_pset(x1, y1, ux_mix(surf, gb_col(nt % 12u), 80 - (int32_t)gb.since * 3));
             }
-        if (loud > 8) {                                /* the halo: the playing wave wrapped round the planet */
-            int16_t hx[65], hy[65];
-            for (k = 0; k <= 64u; k++) {
-                int32_t v = clamp((wave[k & 63u] * g) >> 8, -32767, 32767), r = 13 + (v * 6 >> 15);
-                gb_at(k << 26, r, r / 2, x0, y0, &x1, &y1);
-                hx[k] = (int16_t)x1;
-                hy[k] = (int16_t)y1;
-            }
-            for (k = 1; k <= 64u; k++)
-                cv_line(hx[k - 1], hy[k - 1], hx[k], hy[k], ux_mix(surf, c, 45 + loud / 3));
+        x0 = gb.px;
+        y0 = gb.py;
+        if (loud > 8) {                                /* round the wanderer: the wave against itself a moment later (XY) */
+            int32_t r = 10 + loud / 5;
+            for (k = 1; k < 64u; k++)
+                cv_line(x0 + (wave[k - 1u] * r >> 15), y0 - (wave[k + 7u] * r / 2 >> 15),
+                        x0 + (wave[k] * r >> 15), y0 - (wave[k + 8u] * r / 2 >> 15), ux_mix(surf, c, 55 + loud / 6));
         }
         for (k = 0; k < 48u; k++) {                    /* the ring's back half, behind the planet */
             gb_at(k * 0x05555555u, 9, 3, x0, y0, &x1, &y1);
@@ -299,7 +385,7 @@ static void gu_home_sphere(int32_t w, int32_t h, uint16_t acc, uint16_t surf)
         }
         str_cpy(name, NN[nt % 12u], 4);                /* the newest note, named (C4 = 60) */
         fmt_int(name + str_len(name), (int32_t)nt / 12 - 1);
-        cv_text(10, 4, &AF_S, name, c);
+        cv_text(10, 4, &AF_S, name, gb_col(nt % 12u));
     }
 }
 
