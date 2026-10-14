@@ -58,6 +58,7 @@ if (typeof registerProcessor === "function") {
           ex.web_boot();
           this.ex = ex;
           this.sentWrites = ex.web_flash_writes_count();
+          this.notesR = ex.web_notes_w ? ex.web_notes_w() >>> 0 : 0;
           this.port.postMessage({ type: "ready", rate: ex.web_sample_rate() });
         } catch (err) {
           this.port.postMessage({ type: "error", message: String(err && err.message || err) });
@@ -102,7 +103,21 @@ if (typeof registerProcessor === "function") {
         this.sentWrites = writes;
         msg.sectors = storeSectors(new Uint8Array(mem, ex.web_nor(), ex.web_nor_size()));
       }
-      if (msg.leds || msg.fb || msg.sectors || msg.load !== undefined) this.port.postMessage(msg, transfer);
+      if (ex.web_notes_w) {                           // the notes started since the last frame (the same note
+        const w = ex.web_notes_w() >>> 0, notes = [];   // twice in a row, UNISON's voices, sent once)
+        if (w - this.notesR > 16) this.notesR = (w - 16) >>> 0;
+        for (; this.notesR !== w; this.notesR = (this.notesR + 1) >>> 0) {
+          const n = ex.web_note_at(this.notesR);
+          if (notes[notes.length - 1] !== n) notes.push(n);
+        }
+        if (notes.length) msg.notes = notes;
+      }
+      if (this.lvN) {                                 // the output level since the last frame (RMS of the left)
+        msg.level = Math.sqrt(this.lvSum / this.lvN);
+        this.lvSum = this.lvN = 0;
+      }
+      if (msg.leds || msg.fb || msg.sectors || msg.load !== undefined || msg.notes || msg.level !== undefined)
+        this.port.postMessage(msg, transfer);
     }
 
     // A click's down and up can arrive within one render quantum, but the FM-1's contacts never close for less than
@@ -127,7 +142,10 @@ if (typeof registerProcessor === "function") {
       ex.web_render(n);
       this.busy += clock() - t0;
       this.frames += n;
-      out[0].set(new Float32Array(ex.memory.buffer, ex.web_out_l(), n));
+      const left = new Float32Array(ex.memory.buffer, ex.web_out_l(), n);
+      out[0].set(left);
+      for (let i = 0; i < n; i += 4) this.lvSum = (this.lvSum || 0) + left[i] * left[i];
+      this.lvN = (this.lvN || 0) + Math.ceil(n / 4);
       if (out[1]) out[1].set(new Float32Array(ex.memory.buffer, ex.web_out_r(), n));
       if (currentTime - this.lastFrame >= this.period) {
         this.lastFrame = currentTime;

@@ -50,6 +50,7 @@ class GolanaCore {
         ex.web_boot();
         this.ex = ex;
         this.sentWrites = ex.web_flash_writes_count();
+        this.notesR = ex.web_notes_w ? ex.web_notes_w() >>> 0 : 0;
         this.post({ type: "ready", rate: ex.web_sample_rate() });
       } catch (err) {
         this.post({ type: "error", message: String(err && err.message || err) });
@@ -84,7 +85,17 @@ class GolanaCore {
       this.sentWrites = writes;
       msg.sectors = storeSectors(new Uint8Array(mem, ex.web_nor(), ex.web_nor_size()));
     }
-    if (msg.leds || msg.fb || msg.sectors) this.post(msg, transfer);
+    if (ex.web_notes_w) {                 // the notes started since the last frame (the Biosphere link; the same
+      const w = ex.web_notes_w() >>> 0, notes = [];   // note twice in a row, UNISON's voices, sent once)
+      if (w - this.notesR > 16) this.notesR = (w - 16) >>> 0;
+      for (; this.notesR !== w; this.notesR = (this.notesR + 1) >>> 0) {
+        const n = ex.web_note_at(this.notesR);
+        if (notes[notes.length - 1] !== n) notes.push(n);
+      }
+      if (notes.length) msg.notes = notes;
+    }
+    if (this.lvN) { msg.level = Math.sqrt(this.lvSum / this.lvN); this.lvSum = this.lvN = 0; }   // RMS of the left
+    if (msg.leds || msg.fb || msg.sectors || msg.notes || msg.level !== undefined) this.post(msg, transfer);
   }
   input() {
     const ex = this.ex, now = ex.web_now_ms();
@@ -99,7 +110,10 @@ class GolanaCore {
     if (!ex) return;
     if (this.queue.length) this.input();
     ex.web_render(n);
-    l.set(new Float32Array(ex.memory.buffer, ex.web_out_l(), n));
+    const left = new Float32Array(ex.memory.buffer, ex.web_out_l(), n);
+    l.set(left);
+    for (let i = 0; i < n; i += 4) this.lvSum = (this.lvSum || 0) + left[i] * left[i];
+    this.lvN = (this.lvN || 0) + Math.ceil(n / 4);
     if (r) r.set(new Float32Array(ex.memory.buffer, ex.web_out_r(), n));
     if (time - this.lastFrame >= this.period) { this.lastFrame = time; this.publish(); }
   }

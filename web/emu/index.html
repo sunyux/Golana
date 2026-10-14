@@ -441,6 +441,12 @@ async function midiOn() {
   } catch { /* no permission: the panel only */ }
 }
 
+// ------------------------------------------------------------------ the Biosphere link
+// The notes played and the output level, to any page of this site listening on the channel (Biosphere37 draws
+// them as a galaxy): same-origin pages only, nothing leaves the browser.
+const link = "BroadcastChannel" in self ? new BroadcastChannel("fm1-biosphere") : null;
+const linkOut = (m) => { if (link && (m.notes || m.level !== undefined)) link.postMessage({ notes: m.notes || [], level: m.level || 0 }); };
+
 // ------------------------------------------------------------------ switching on
 const status = document.getElementById("status");
 const say = (t) => { status.textContent = t; status.hidden = !t; };
@@ -464,6 +470,7 @@ async function switchOn() {
         else if (m.type === "frame") {
           if (m.fb) drawScreen(m.fb);
           if (m.leds) drawLights(lastLeds = m.leds, m.anim);
+          linkOut(m);
           if (m.sectors && !saveFlash(m.sectors) && !warned) {
             warned = true;
             console.warn("Felucca: this browser does not keep the saves; they last until the page closes.");

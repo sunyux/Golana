@@ -503,3 +503,6 @@ EXPORT uint32_t web_screen_draws(void) { return web_draws; }
 EXPORT uint32_t web_now_ms(void) { return fm1_ms; }
 EXPORT uint32_t web_playing(void) { return song.playing; }
 EXPORT uint32_t web_sample_rate(void) { return FS; }
+/* the notes as they start (eng_golana.c, HOME · SPHERE's ring of 16): the count so far, and note i of it */
+EXPORT uint32_t web_notes_w(void) { return gb_note_w; }
+EXPORT uint32_t web_note_at(uint32_t i) { return gb_note_q[i & 15u]; }
